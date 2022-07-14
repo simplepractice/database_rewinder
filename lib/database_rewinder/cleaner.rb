@@ -58,7 +58,11 @@ module DatabaseRewinder
           # Print the warning message, then fall back to non-multiple deletion
           Kernel.warn "WARNING: You may be executing DatabaseRewinder inside a transactional test. You're presumably misconfiguring your tests. Please read DatabaseRewinder's document, and properly configure your tests."
         else
-          ar_conn.execute_multiple tables.map {|t| "DELETE FROM #{ar_conn.quote_table_name(t)}"}.join(';')
+          ar_conn.disable_referential_integrity do
+            tables.each do |table_name|
+              ar_conn.execute "TRUNCATE TABLE #{ar_conn.quote_table_name(table_name)};"
+            end
+          end
           return
         end
       end
