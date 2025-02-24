@@ -2,57 +2,27 @@
 
 module DatabaseRewinder
   module InsertRecorder
-    module Execute
-      module NoKwargs
-        def execute(sql, *)
-          DatabaseRewinder.record_inserted_table self, sql
-          super
-        end
-      end
-
-      module WithKwargs
-        def execute(sql, *, **)
-          DatabaseRewinder.record_inserted_table self, sql
-          super
-        end
-
-        def raw_execute(sql, *, **)
-          DatabaseRewinder.record_inserted_table self, sql
-          super
-        end
-      end
-    end
-
-    module ExecQuery
-      module NoKwargs
-        def exec_query(sql, *)
-          DatabaseRewinder.record_inserted_table self, sql
-          super
-        end
-      end
-
-      module WithKwargs
-        def exec_query(sql, *, **)
-          DatabaseRewinder.record_inserted_table self, sql
-          super
-        end
-      end
-    end
-
     # This method actually no longer has to be a `prepended` hook because InsertRecorder is a module without a direct method now, but still doing this just for compatibility
     def self.prepended(mod)
-      if meth = mod.instance_method(:execute)
-        if meth.parameters.any? {|type, _name| [:key, :keyreq, :keyrest].include? type }
-          mod.send :prepend, Execute::WithKwargs
-        else
-          mod.send :prepend, Execute::NoKwargs
-        end
-      end
-      if meth = mod.instance_method(:exec_query)
-        if meth.parameters.any? {|type, _name| [:key, :keyreq, :keyrest].include? type }
-          mod.send :prepend, ExecQuery::WithKwargs
-        else
-          mod.send :prepend, ExecQuery::NoKwargs
+      [:execute, :exec_insert, :exec_query, :internal_exec_query].each do |method_name|
+        if mod.instance_methods.include?(method_name) && (meth = mod.instance_method(method_name))
+          method_body = if meth.parameters.any? {|type, _name| [:key, :keyreq, :keyrest].include? type }
+            <<-RUBY
+              def #{method_name}(sql, *, **)
+                DatabaseRewinder.record_inserted_table self, sql
+                super
+              end
+            RUBY
+          else
+            <<-RUBY
+              def #{method_name}(sql, *)
+                DatabaseRewinder.record_inserted_table self, sql
+                super
+              end
+            RUBY
+          end
+
+          mod.send :prepend, Module.new { class_eval method_body }
         end
       end
     end
@@ -62,7 +32,9 @@ end
 
 # Already loaded adapters (SQLite3Adapter, PostgreSQLAdapter, AbstractMysqlAdapter, and possibly another third party adapter)
 ::ActiveRecord::ConnectionAdapters::AbstractAdapter.descendants.each do |adapter|
-  # Note: this would only prepend on AbstractMysqlAdapter and not on Mysql2Adapter because ```Mysql2Adapter < InsertRecorder``` becomes true immediately after AbstractMysqlAdapter prepends InsertRecorder
+  # In order not to touch AbstractMysqlAdapter thing, but to surely patch the concrete classes
+  next if adapter.descendants.any?
+
   adapter.send :prepend, DatabaseRewinder::InsertRecorder unless adapter < DatabaseRewinder::InsertRecorder
 end
 
