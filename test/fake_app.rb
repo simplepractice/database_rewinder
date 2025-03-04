@@ -3,6 +3,9 @@
 ENV['DB'] ||= 'sqlite3'
 require 'active_record/railtie'
 
+require_relative '../lib/database_rewinder/lease_connection_compat'
+using DatabaseRewinder::LeaseConnectionCompat
+
 module DatabaseRewinderTestApp
   Application = Class.new(Rails::Application) do
     # Rais.root
@@ -20,7 +23,7 @@ end
 require 'active_record/base'
 
 if ENV['DB'] == 'postgresql'
-  ActiveRecord::Base.establish_connection(:superuser_connection).connection.execute(<<-CREATE_ROLE_SQL)
+  ActiveRecord::Base.establish_connection(:superuser_connection).lease_connection.execute(<<-CREATE_ROLE_SQL)
   DO
   $do$
   BEGIN
@@ -55,7 +58,7 @@ class CreateAllTables < ActiveRecord::VERSION::MAJOR >= 5 ? ActiveRecord::Migrat
     create_table(:foos) {|t| t.string :name; t.references :bar, foreign_key: true }
     create_table(:bazs) {|t| t.string :name }
 
-    test2_connection = ActiveRecord::Base.establish_connection(:test2).connection
+    test2_connection = ActiveRecord::Base.establish_connection(:test2).lease_connection
     test2_connection.create_table(:quus) {|t| t.string :name }
     ActiveRecord::Base.establish_connection :test
   end

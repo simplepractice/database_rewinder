@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require_relative 'lease_connection_compat'
 require_relative 'multiple_statements_executor'
 
+using DatabaseRewinder::LeaseConnectionCompat
 using DatabaseRewinder::MultipleStatementsExecutor
 
 module DatabaseRewinder
@@ -17,6 +19,10 @@ module DatabaseRewinder
       config['database']
     end
 
+    def host
+      config['host']
+    end
+
     def clean(multiple: true)
       return if !pool || inserted_tables.empty?
 
@@ -25,14 +31,14 @@ module DatabaseRewinder
       # In this case, we have to reconnect to the database to clean inserted
       # tables.
       with_automatic_reconnect(pool) do
-        delete_all (ar_conn = pool.connection), DatabaseRewinder.all_table_names(ar_conn) & inserted_tables, multiple: multiple
+        delete_all (ar_conn = pool.lease_connection), DatabaseRewinder.all_table_names(ar_conn) & inserted_tables, multiple: multiple
       end
       reset
     end
 
     def clean_all(multiple: true)
       if pool
-        ar_conn = pool.connection
+        ar_conn = pool.lease_connection
         delete_all ar_conn, DatabaseRewinder.all_table_names(ar_conn), multiple: multiple
       else
         require 'database_rewinder/dummy_model'

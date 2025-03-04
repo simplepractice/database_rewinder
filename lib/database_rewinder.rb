@@ -22,6 +22,8 @@ module DatabaseRewinder
     end
 
     def [](connection)
+      init unless defined? @cleaners
+
       @cleaners.detect {|c| c.connection_name == connection} || create_cleaner(connection)
     end
 
@@ -37,13 +39,14 @@ module DatabaseRewinder
     def record_inserted_table(connection, sql)
       config = connection.instance_variable_get(:'@config')
       database = config[:database]
+      host = config[:host]
       #NOTE What's the best way to get the app dir besides Rails.root? I know Dir.pwd here might not be the right solution, but it should work in most cases...
       root_dir = defined?(Rails) && Rails.respond_to?(:root) ? Rails.root : Dir.pwd
       cleaner = cleaners.detect do |c|
         if (config[:adapter] == 'sqlite3') && (config[:database] != ':memory:')
           File.expand_path(c.db, root_dir) == File.expand_path(database, root_dir)
         else
-          c.db == database
+          c.db == database && c.host == host
         end
       end or return
 
@@ -75,9 +78,20 @@ module DatabaseRewinder
     def all_table_names(connection)
       cache_key = get_cache_key(connection.pool)
       #NOTE connection.tables warns on AR 5 with some adapters
-      tables = ActiveSupport::Deprecation.silence { connection.tables }
+      tables =
+        if ActiveRecord::VERSION::MAJOR == 5 && ActiveRecord::VERSION::MINOR == 0
+          ActiveSupport::Deprecation.silence { connection.tables }
+        else
+          connection.tables
+        end
+      schema_migraion_table_name =
+        if ActiveRecord::SchemaMigration.respond_to?(:table_name)
+          ActiveRecord::SchemaMigration.table_name
+        else
+          ActiveRecord::SchemaMigration.new(connection).table_name  # AR >= 7.1
+        end
       @table_names_cache[cache_key] ||= tables.reject do |t|
-        (t == ActiveRecord::SchemaMigration.table_name) ||
+        (t == schema_migraion_table_name) ||
         (ActiveRecord::Base.respond_to?(:internal_metadata_table_name) && (t == ActiveRecord::Base.internal_metadata_table_name))
       end
     end

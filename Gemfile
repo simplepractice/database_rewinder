@@ -14,7 +14,12 @@ else
 end
 
 gem 'nokogiri', RUBY_VERSION < '2.1' ? '~> 1.6.0' : '>= 1.7'
+gem 'loofah', RUBY_VERSION < '2.5' ? '< 2.21.0' : '>= 0'
 gem 'selenium-webdriver'
+gem 'bigdecimal', RUBY_VERSION < '2.7' ? '< 2' : '>= 0'
+gem 'mutex_m' if RUBY_VERSION >= '3.3'
+gem 'benchmark' if RUBY_VERSION >= '3.5'
+
 
 rails_version = ENV['RAILS_VERSION'] || '∞'
 
@@ -29,6 +34,14 @@ when 'mysql'
   else
     gem 'mysql2'
   end
+when 'trilogy'
+  gem 'trilogy'
 else
-  gem 'sqlite3', rails_version <= '5.0' ? '< 1.4' : '>= 1.4'
+  if rails_version <= '5.0'
+    gem 'sqlite3', '< 1.4'
+  elsif (rails_version <= '8') || (RUBY_VERSION < '3')
+    gem 'sqlite3', '< 2'
+  else
+    gem 'sqlite3'
+  end
 end
